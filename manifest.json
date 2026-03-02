@@ -1,0 +1,58 @@
+{
+  "manifest_version": "0.3",
+  "name": "mimecast-mcp",
+  "display_name": "Mimecast Email Security MCP Server",
+  "version": "1.0.0",
+  "description": "MCP server for Mimecast Email Security — message tracking, threat intelligence, and email queue management.",
+  "long_description": "Provides Claude with tools to interact with the Mimecast Email Security API. Supports message tracking and search, placing and releasing message holds, threat intelligence (TTP URL/attachment/impersonation logs), threat remediation incidents, audit log retrieval, and email delivery queue monitoring.",
+  "author": {
+    "name": "Wyre Technology",
+    "url": "https://github.com/wyre-technology"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wyre-technology/mimecast-mcp"
+  },
+  "license": "MIT",
+  "keywords": ["mimecast", "email", "security", "mcp", "threat-intelligence"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "MIMECAST_CLIENT_ID": "${user_config.client_id}",
+        "MIMECAST_CLIENT_SECRET": "${user_config.client_secret}",
+        "MIMECAST_REGION": "${user_config.region}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "client_id": {
+      "type": "string",
+      "title": "Client ID",
+      "description": "Your Mimecast OAuth 2.0 Client ID",
+      "required": true
+    },
+    "client_secret": {
+      "type": "string",
+      "title": "Client Secret",
+      "description": "Your Mimecast OAuth 2.0 Client Secret",
+      "required": true,
+      "sensitive": true
+    },
+    "region": {
+      "type": "string",
+      "title": "Region",
+      "description": "Mimecast region (us, eu, de, ca, za, au, offshore, je). Defaults to us.",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" },
+    "claude_desktop": ">=0.10.0"
+  }
+}

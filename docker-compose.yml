@@ -1,0 +1,22 @@
+services:
+  mcp:
+    build:
+      context: .
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+    ports:
+      - "8080:8080"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_PORT=8080
+      - AUTH_MODE=${AUTH_MODE:-env}
+      - MIMECAST_CLIENT_ID=${MIMECAST_CLIENT_ID}
+      - MIMECAST_CLIENT_SECRET=${MIMECAST_CLIENT_SECRET}
+      - MIMECAST_REGION=${MIMECAST_REGION:-us}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

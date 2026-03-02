@@ -1,0 +1,43 @@
+{
+  "name": "@wyre-technology/mimecast-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Mimecast Email Security — message tracking, threat intelligence, and email queue management",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "start:http": "MCP_TRANSPORT=http node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "mcpb:pack": "npm run build && npm install --production && mcpb pack",
+    "cf:deploy": "npm run build && wrangler deploy",
+    "cf:dev": "npm run build && wrangler dev"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.0",
+    "@wyre-technology/node-mimecast": "^1.0.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.0",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wyre-technology/mimecast-mcp.git"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

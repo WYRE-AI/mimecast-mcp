@@ -1,0 +1,28 @@
+name: mimecast-mcp
+region: nyc
+services:
+  - name: mimecast-mcp
+    github:
+      repo: wyre-technology/mimecast-mcp
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 5
+    envs:
+      - key: MCP_TRANSPORT
+        value: http
+      - key: AUTH_MODE
+        value: gateway
+      - key: LOG_LEVEL
+        value: info
+      - key: MIMECAST_REGION
+        value: us
