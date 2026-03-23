@@ -1,0 +1,21 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - mimecastClientId
+      - mimecastClientSecret
+      - mimecastRegion
+    properties:
+      mimecastClientId:
+        type: string
+        description: Your Mimecast API client ID
+      mimecastClientSecret:
+        type: string
+        description: Your Mimecast API client secret
+      mimecastRegion:
+        type: string
+        description: "Your Mimecast region (e.g., us, eu, de, au, za, ca)"
+  commandFunction: |-
+    (config) => ({ command: 'node', args: ['dist/index.js'], env: { MIMECAST_CLIENT_ID: config.mimecastClientId, MIMECAST_CLIENT_SECRET: config.mimecastClientSecret, MIMECAST_REGION: config.mimecastRegion, MCP_TRANSPORT: 'stdio' } })
