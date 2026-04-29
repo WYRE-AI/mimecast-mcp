@@ -24,4 +24,5 @@ ENV NODE_ENV=production \
     MCP_HTTP_PORT=8080 \
     AUTH_MODE=gateway \
     LOG_LEVEL=info
+LABEL io.modelcontextprotocol.server.name="io.github.wyre-technology/mimecast-mcp"
 CMD ["node", "dist/index.js"]
