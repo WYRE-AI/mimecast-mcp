@@ -8,7 +8,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDomainHandler, getAvailableDomains } from './domains/index.js';
-import { isDomainName, type DomainName } from './utils/types.js';
+import { isDomainName } from './utils/types.js';
 import { getCredentials } from './utils/client.js';
 import { logger } from './utils/logger.js';
 
@@ -18,17 +18,15 @@ interface Env {
   MIMECAST_REGION?: string;
 }
 
-function createMcpServer(): Server {
+async function createMcpServer(): Promise<Server> {
   const server = new Server(
     { name: 'mimecast-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
   );
 
-  let currentDomain: DomainName | null = null;
-
   const navigateTool: Tool = {
     name: 'mimecast_navigate',
-    description: 'Navigate to a Mimecast domain: messages, threats, or queue.',
+    description: 'Show available tools for a Mimecast domain (messages, threats, queue). Discovery aid; all tools are callable directly without navigating.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,29 +36,25 @@ function createMcpServer(): Server {
     },
   };
 
-  const backTool: Tool = {
-    name: 'mimecast_back',
-    description: 'Return to the main navigation menu.',
-    inputSchema: { type: 'object', properties: {} },
-  };
-
   const statusTool: Tool = {
     name: 'mimecast_status',
-    description: 'Show current navigation state and credential status.',
+    description: 'Show credential status. All tools are available at all times.',
     inputSchema: { type: 'object', properties: {} },
   };
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools: Tool[] = [statusTool];
-    if (currentDomain === null) {
-      tools.unshift(navigateTool);
-    } else {
-      tools.unshift(backTool);
-      const handler = await getDomainHandler(currentDomain);
-      tools.push(...handler.getTools());
+  const allDomainTools: Tool[] = [];
+  const toolToDomain = new Map<string, string>();
+  for (const domain of getAvailableDomains()) {
+    const handler = await getDomainHandler(domain);
+    for (const tool of handler.getTools()) {
+      allDomainTools.push(tool);
+      toolToDomain.set(tool.name, domain);
     }
-    return { tools };
-  });
+  }
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [navigateTool, statusTool, ...allDomainTools],
+  }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -71,15 +65,9 @@ function createMcpServer(): Server {
         if (!isDomainName(domain)) {
           return { content: [{ type: 'text', text: `Invalid domain: ${domain}` }], isError: true };
         }
-        currentDomain = domain;
         const handler = await getDomainHandler(domain);
-        const tools = handler.getTools().map(t => `- ${t.name}`).join('\n');
-        return { content: [{ type: 'text', text: `Navigated to ${domain}.\n\n${tools}` }] };
-      }
-
-      if (name === 'mimecast_back') {
-        currentDomain = null;
-        return { content: [{ type: 'text', text: 'Returned to main menu.' }] };
+        const tools = handler.getTools().map(t => `- ${t.name}: ${t.description}`).join('\n');
+        return { content: [{ type: 'text', text: `Tools in ${domain} domain (all callable directly):\n\n${tools}` }] };
       }
 
       if (name === 'mimecast_status') {
@@ -88,18 +76,18 @@ function createMcpServer(): Server {
           content: [{
             type: 'text',
             text: JSON.stringify({
-              currentDomain,
+              mode: 'flat',
+              toolCount: allDomainTools.length,
               credentials: { configured: !!creds, region: creds?.region },
             }, null, 2),
           }],
         };
       }
 
-      if (currentDomain !== null) {
-        const handler = await getDomainHandler(currentDomain);
-        if (handler.getTools().some(t => t.name === name)) {
-          return await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
-        }
+      const domain = toolToDomain.get(name);
+      if (domain) {
+        const handler = await getDomainHandler(domain);
+        return await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
       }
 
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
@@ -141,7 +129,7 @@ export default {
       sessionIdGenerator: undefined, // stateless
     });
 
-    const server = createMcpServer();
+    const server = await createMcpServer();
     await server.connect(transport);
     return transport.handleRequest(request);
   },
