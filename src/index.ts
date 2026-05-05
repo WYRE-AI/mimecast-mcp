@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Mimecast MCP Server with Decision Tree Architecture
+ * Mimecast MCP Server
  *
- * Hierarchical tool loading:
- *   1. Exposes navigation tools only at start
- *   2. After domain selection, exposes domain-specific tools
- *   3. Lazy-loads domain handlers and the Mimecast client
+ * This MCP server provides tools for interacting with the Mimecast API.
+ * All tools are listed upfront so they work with every MCP client, including
+ * remote connectors (claude.ai, mcp-remote) that do not support dynamic
+ * tool-list changes. A helper `mimecast_navigate` tool provides domain
+ * discovery and guidance.
  *
  * Transports:
  *   - stdio (default): Claude Desktop / CLI
@@ -28,140 +29,164 @@ import { isDomainName, type DomainName } from './utils/types.js';
 import { getCredentials } from './utils/client.js';
 import { logger } from './utils/logger.js';
 
+// ─── Domain Configuration ───────────────────────────────────────────────────
+
+/**
+ * Domain metadata for navigation
+ */
+const domainDescriptions: Record<DomainName, string> = {
+  messages: "Message tracking and management - find, hold, release email messages",
+  threats: "Threat detection and incident management - TTP logs, threat indicators, and security events",
+  queue: "Message queue monitoring - delivery queue status and email flow analysis",
+};
+
+/**
+ * Map from domain name to its tool definitions (loaded lazily)
+ */
+const domainToolMap = new Map<DomainName, Tool[]>();
+
+/**
+ * All domain tools, collected once at startup
+ */
+let allDomainTools: Tool[] | null = null;
+
+/**
+ * Load all domain tools (lazy-loaded on first access)
+ */
+async function getAllDomainTools(): Promise<Tool[]> {
+  if (allDomainTools !== null) {
+    return allDomainTools;
+  }
+
+  const domains = getAvailableDomains();
+  const tools: Tool[] = [];
+
+  for (const domain of domains) {
+    if (!domainToolMap.has(domain)) {
+      const handler = await getDomainHandler(domain);
+      const domainTools = handler.getTools();
+      domainToolMap.set(domain, domainTools);
+    }
+    tools.push(...domainToolMap.get(domain)!);
+  }
+
+  allDomainTools = tools;
+  return tools;
+}
+
 // ─── MCP Server Factory ──────────────────────────────────────────────────────
 
 function createMcpServer(): Server {
-  // Navigation state scoped to this server instance
-  let currentDomain: DomainName | null = null;
-
   const server = new Server(
     { name: 'mimecast-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
   );
 
+  /**
+   * Navigation / discovery tool - helps the LLM find the right tools
+   *
+   * This is a stateless helper that describes available tools for a domain.
+   * All domain tools are always listed in tools/list regardless of navigation
+   * state, because many MCP clients (claude.ai connectors, mcp-remote) only
+   * fetch the tool list once and do not support notifications/tools/list_changed.
+   */
   const navigateTool: Tool = {
     name: 'mimecast_navigate',
     description:
-      'Navigate to a Mimecast domain to access its tools. ' +
-      'Domains: messages (tracking, hold/release), threats (TTP logs, incidents, audit), queue (delivery queue status).',
+      'Discover available Mimecast tools by domain. Returns tool names and descriptions for the selected domain. All tools are callable at any time — this is a help/discovery aid, not a prerequisite.',
     inputSchema: {
       type: 'object',
       properties: {
         domain: {
           type: 'string',
           enum: getAvailableDomains(),
-          description: 'Domain to navigate to: messages, threats, or queue',
+          description: `The domain to explore:
+- messages: ${domainDescriptions.messages}
+- threats: ${domainDescriptions.threats}
+- queue: ${domainDescriptions.queue}`,
         },
       },
       required: ['domain'],
     },
   };
 
-  const backTool: Tool = {
-    name: 'mimecast_back',
-    description: 'Return to the main domain navigation menu.',
-    inputSchema: { type: 'object', properties: {} },
-  };
-
+  /**
+   * Status tool - shows credentials status and available domains
+   */
   const statusTool: Tool = {
     name: 'mimecast_status',
-    description:
-      'Show current navigation state, credential status, and available domains.',
+    description: 'Show credentials status and available domains. All tools are always available.',
     inputSchema: { type: 'object', properties: {} },
   };
 
-  async function getToolsForState(): Promise<Tool[]> {
-    const tools: Tool[] = [statusTool];
-
-    if (currentDomain === null) {
-      tools.unshift(navigateTool);
-    } else {
-      tools.unshift(backTool);
-      const handler = await getDomainHandler(currentDomain);
-      tools.push(...handler.getTools());
-    }
-
-    return tools;
-  }
-
+  /**
+   * Handle ListTools requests - always returns ALL tools
+   */
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: await getToolsForState() };
+    const domainTools = await getAllDomainTools();
+    return { tools: [navigateTool, statusTool, ...domainTools] };
   });
 
+  /**
+   * Handle CallTool requests
+   */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     logger.info('Tool call received', { tool: name });
 
     try {
-      // Navigation
+      // Handle navigation / discovery helper
       if (name === 'mimecast_navigate') {
-        const domain = (args as { domain: string }).domain;
+        const { domain } = args as { domain: DomainName };
 
         if (!isDomainName(domain)) {
           return {
             content: [{
               type: 'text',
-              text: `Invalid domain: ${domain}. Available: ${getAvailableDomains().join(', ')}`,
+              text: `Invalid domain: ${domain}. Available domains: ${getAvailableDomains().join(', ')}`,
             }],
             isError: true,
           };
         }
 
-        const creds = getCredentials();
-        if (!creds) {
-          return {
-            content: [{
-              type: 'text',
-              text: 'Error: No Mimecast credentials configured. ' +
-                'Set MIMECAST_CLIENT_ID, MIMECAST_CLIENT_SECRET, and optionally MIMECAST_REGION.',
-            }],
-            isError: true,
-          };
-        }
-
-        currentDomain = domain;
         const handler = await getDomainHandler(domain);
-        const domainTools = handler.getTools();
-        logger.info('Navigated to domain', { domain, toolCount: domainTools.length });
+        const tools = handler.getTools();
+
+        const toolSummary = tools
+          .map((t) => `- ${t.name}: ${t.description}`)
+          .join('\n');
 
         return {
           content: [{
             type: 'text',
             text: [
-              `Navigated to the ${domain} domain.`,
+              `## ${domain.charAt(0).toUpperCase() + domain.slice(1)} Domain`,
               '',
-              'Available tools:',
-              ...domainTools.map(t => `- ${t.name}: ${t.description}`),
+              domainDescriptions[domain],
               '',
-              'Use mimecast_back to return to the main menu.',
+              '**Available tools:**',
+              toolSummary,
+              '',
+              '*All tools are callable at any time — no navigation required.*',
             ].join('\n'),
           }],
         };
       }
 
-      // Back
-      if (name === 'mimecast_back') {
-        const prev = currentDomain;
-        currentDomain = null;
-        return {
-          content: [{
-            type: 'text',
-            text: `Returned from ${prev ?? 'root'} to the main menu.\n\nAvailable domains: ${getAvailableDomains().join(', ')}`,
-          }],
-        };
-      }
-
-      // Status
+      // Handle status
       if (name === 'mimecast_status') {
         const creds = getCredentials();
+        const allTools = await getAllDomainTools();
+
         return {
           content: [{
             type: 'text',
             text: JSON.stringify({
               server: 'mimecast-mcp',
               version: '1.0.0',
-              currentDomain: currentDomain ?? '(none — at main menu)',
+              status: 'All tools available',
               availableDomains: getAvailableDomains(),
+              totalTools: allTools.length,
               credentials: {
                 configured: !!creds,
                 region: creds?.region ?? null,
@@ -172,24 +197,28 @@ function createMcpServer(): Server {
         };
       }
 
-      // Domain tool dispatch
-      if (currentDomain !== null) {
-        const handler = await getDomainHandler(currentDomain);
-        const domainTools = handler.getTools();
+      // Domain tool dispatch - check all domain handlers
+      const allTools = await getAllDomainTools();
+      const tool = allTools.find(t => t.name === name);
 
-        if (domainTools.some(t => t.name === name)) {
-          const result = await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
-          logger.debug('Tool call completed', { tool: name });
-          return result;
+      if (tool) {
+        // Find which domain this tool belongs to
+        for (const domain of getAvailableDomains()) {
+          const handler = await getDomainHandler(domain);
+          const domainTools = handler.getTools();
+
+          if (domainTools.some(t => t.name === name)) {
+            const result = await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
+            logger.debug('Tool call completed', { tool: name, domain });
+            return result;
+          }
         }
       }
 
       return {
         content: [{
           type: 'text',
-          text: currentDomain
-            ? `Unknown tool: ${name}. You are in the ${currentDomain} domain. Use mimecast_back to go to the main menu.`
-            : `Unknown tool: ${name}. Use mimecast_navigate to select a domain first.`,
+          text: `Unknown tool: ${name}. Use mimecast_navigate to explore available tools by domain.`,
         }],
         isError: true,
       };
