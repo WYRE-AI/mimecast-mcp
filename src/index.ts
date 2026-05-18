@@ -254,20 +254,16 @@ async function startHttpTransport(): Promise<void> {
   const httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-    // Health check — unauthenticated
-    if (url.pathname === '/health') {
-      const creds = getCredentials();
-      const statusCode = creds ? 200 : 503;
-      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    // Health check — shallow, unauthenticated liveness probe.
+    // Must NOT check credentials: in gateway mode credentials arrive
+    // per-request via headers on /mcp, so a credential-aware /health
+    // returns 503 on every probe and Azure SIGTERMs the container.
+    if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/healthz')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        status: creds ? 'ok' : 'degraded',
+        status: 'ok',
         transport: 'http',
         authMode: isGatewayMode ? 'gateway' : 'env',
-        timestamp: new Date().toISOString(),
-        credentials: {
-          configured: !!creds,
-          region: creds?.region ?? null,
-        },
         version: '1.0.0',
       }));
       return;
@@ -315,7 +311,7 @@ async function startHttpTransport(): Promise<void> {
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found', endpoints: ['/mcp', '/health'] }));
+    res.end(JSON.stringify({ error: 'Not found', endpoints: ['/mcp', '/health', '/healthz'] }));
   });
 
   await new Promise<void>((resolve) => {

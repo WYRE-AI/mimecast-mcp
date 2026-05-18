@@ -1,6 +1,6 @@
 {
   "name": "@wyre-technology/mimecast-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for Mimecast Email Security — message tracking, threat intelligence, and email queue management",
   "type": "module",
   "main": "./dist/index.js",
