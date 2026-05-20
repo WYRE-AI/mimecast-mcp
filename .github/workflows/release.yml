@@ -116,7 +116,13 @@ jobs:
           npm run build
           npm install --production
 
-      - run: npx mcpb pack
+      - name: Pack MCPB bundle
+        # @anthropic-ai/mcpb is a devDependency; the prior `npm install
+        # --production` step prunes it from node_modules, so invoke the packer
+        # via npx by its real scoped name (bare `mcpb` is not a published
+        # package — npx fell back to the registry and 404'd) at the
+        # lockfile-pinned version.
+        run: npx --yes @anthropic-ai/mcpb@2.1.2 pack
 
       - uses: softprops/action-gh-release@v2
         with:
