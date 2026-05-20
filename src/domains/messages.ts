@@ -9,6 +9,11 @@ import type { DomainHandler, CallToolResult } from '../utils/types.js';
 import { getClient } from '../utils/client.js';
 import { logger } from '../utils/logger.js';
 
+/** Mirrors the `messageStatus` union accepted by node-mimecast's messages.find(). */
+type MessageStatus =
+  | 'accepted' | 'blocked' | 'bounced' | 'deferred' | 'delivered'
+  | 'failed' | 'held' | 'processing' | 'queued';
+
 function getTools(): Tool[] {
   return [
     {
@@ -126,7 +131,7 @@ async function handleCall(
         recipientAddress: args.recipient_address as string | undefined,
         from: args.from_date as string | undefined,
         to: args.to_date as string | undefined,
-        messageStatus: args.status as string | undefined,
+        messageStatus: args.status as MessageStatus | undefined,
         pageSize,
         pageToken: args.page_token as string | undefined,
       });

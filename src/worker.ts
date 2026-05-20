@@ -8,7 +8,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDomainHandler, getAvailableDomains } from './domains/index.js';
-import { isDomainName } from './utils/types.js';
+import { isDomainName, type DomainName } from './utils/types.js';
 import { getCredentials } from './utils/client.js';
 import { logger } from './utils/logger.js';
 
@@ -43,7 +43,7 @@ async function createMcpServer(): Promise<Server> {
   };
 
   const allDomainTools: Tool[] = [];
-  const toolToDomain = new Map<string, string>();
+  const toolToDomain = new Map<string, DomainName>();
   for (const domain of getAvailableDomains()) {
     const handler = await getDomainHandler(domain);
     for (const tool of handler.getTools()) {
