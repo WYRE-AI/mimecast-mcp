@@ -29,7 +29,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       released: ${{ steps.version.outputs.released }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -76,7 +76,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
 
@@ -104,7 +104,7 @@ jobs:
       contents: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
 
@@ -173,7 +173,7 @@ jobs:
       VERSION: ${{ needs.release.outputs.version }}
     steps:
       - name: Checkout (post-release commit)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
 
