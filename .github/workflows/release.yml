@@ -129,7 +129,7 @@ jobs:
         # lockfile-pinned version.
         run: npx --yes @anthropic-ai/mcpb@2.1.2 pack
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.release.outputs.version }}
           files: '*.mcpb'
