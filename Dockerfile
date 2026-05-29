@@ -25,3 +25,8 @@ ENV NODE_ENV=production \
     AUTH_MODE=gateway \
     LOG_LEVEL=info
 CMD ["node", "dist/index.js"]
+
+LABEL org.opencontainers.image.title="mimecast-mcp"
+LABEL org.opencontainers.image.source="https://github.com/wyre-technology/mimecast-mcp"
+LABEL org.opencontainers.image.vendor="Wyre Technology"
+LABEL io.modelcontextprotocol.server.name="io.github.wyre-technology/mimecast-mcp"
