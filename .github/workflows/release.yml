@@ -11,7 +11,7 @@ jobs:
     name: Test
     # Delegated to the canonical reusable CI workflow.
     # See: ~/.claude/skills/mcp-server-fleet-ci-template
-    uses: wyre-technology/.github/.github/workflows/mcp-server-ci.yml@cd81e464960d82e07779febbcbf1716e22e408e4
+    uses: wyre-technology/.github/.github/workflows/mcp-server-ci.yml@198605d0575e27374cf9b67fba3aa8c7b91de2c0
     with:
       node-versions: '["20", "22"]'
     secrets: inherit
