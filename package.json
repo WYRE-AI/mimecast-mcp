@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.0",
-    "@cloudflare/workers-types": "^4.20260520.1",
+    "@cloudflare/workers-types": "^4.20260615.1",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
@@ -31,7 +31,7 @@
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.100.0"
   },
   "engines": {
     "node": ">=18.0.0"
