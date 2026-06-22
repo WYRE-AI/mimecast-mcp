@@ -24,7 +24,7 @@
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.0",
     "@cloudflare/workers-types": "^4.20260520.1",
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.0",
     "eslint": "^9.39.4",
     "globals": "^17.6.0",
