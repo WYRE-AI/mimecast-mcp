@@ -16,6 +16,11 @@
  *   env vars: MIMECAST_CLIENT_ID, MIMECAST_CLIENT_SECRET, MIMECAST_REGION
  *   gateway headers (AUTH_MODE=gateway):
  *     X-Mimecast-Client-ID, X-Mimecast-Client-Secret, X-Mimecast-Region
+ *
+ * Security: process.env is NEVER mutated per-request. In gateway mode
+ * credentials extracted from headers are passed as an explicit argument
+ * through createMcpServer() → handler.handleCall() → getClient(), so
+ * concurrent requests cannot contaminate each other's credentials.
  */
 
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -26,7 +31,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDomainHandler, getAvailableDomains } from './domains/index.js';
 import { isDomainName, type DomainName } from './utils/types.js';
-import { getCredentials } from './utils/client.js';
+import { buildCredentials, getCredentials, type MimecastCredentials } from './utils/client.js';
 import { logger } from './utils/logger.js';
 
 // ─── Domain Configuration ───────────────────────────────────────────────────
@@ -76,7 +81,16 @@ async function getAllDomainTools(): Promise<Tool[]> {
 
 // ─── MCP Server Factory ──────────────────────────────────────────────────────
 
-function createMcpServer(): Server {
+/**
+ * Create an MCP server instance bound to the supplied credentials.
+ *
+ * @param creds - Per-request credentials (gateway mode). Omit for stdio / env
+ *                mode where process.env carries the credentials.
+ *
+ * SECURITY: credentials are threaded explicitly through every tool call.
+ * process.env is never mutated by this function or anything it calls.
+ */
+function createMcpServer(creds?: MimecastCredentials): Server {
   const server = new Server(
     { name: 'mimecast-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
@@ -175,7 +189,8 @@ function createMcpServer(): Server {
 
       // Handle status
       if (name === 'mimecast_status') {
-        const creds = getCredentials();
+        // Use request-scoped creds if available; fall back to env (stdio mode)
+        const resolvedCreds = creds ?? getCredentials();
         const allTools = await getAllDomainTools();
 
         return {
@@ -188,9 +203,9 @@ function createMcpServer(): Server {
               availableDomains: getAvailableDomains(),
               totalTools: allTools.length,
               credentials: {
-                configured: !!creds,
-                region: creds?.region ?? null,
-                baseUrl: creds?.baseUrl ?? null,
+                configured: !!resolvedCreds,
+                region: resolvedCreds?.region ?? null,
+                baseUrl: resolvedCreds?.baseUrl ?? null,
               },
             }, null, 2),
           }],
@@ -208,7 +223,8 @@ function createMcpServer(): Server {
           const domainTools = handler.getTools();
 
           if (domainTools.some(t => t.name === name)) {
-            const result = await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
+            // Pass per-request creds; handler passes them to getClient()
+            const result = await handler.handleCall(name, (args as Record<string, unknown>) ?? {}, creds);
             logger.debug('Tool call completed', { tool: name, domain });
             return result;
           }
@@ -238,6 +254,7 @@ function createMcpServer(): Server {
 // ─── stdio Transport ────────────────────────────────────────────────────────────
 
 async function startStdioTransport(): Promise<void> {
+  // stdio mode: no per-request creds; getClient() reads process.env
   const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -270,7 +287,9 @@ async function startHttpTransport(): Promise<void> {
     }
 
     if (url.pathname === '/mcp') {
-      // Gateway mode: extract credentials from injected headers
+      // Resolve per-request credentials without touching process.env
+      let requestCreds: MimecastCredentials | undefined;
+
       if (isGatewayMode) {
         const clientId = req.headers['x-mimecast-client-id'] as string | undefined;
         const clientSecret = req.headers['x-mimecast-client-secret'] as string | undefined;
@@ -287,13 +306,12 @@ async function startHttpTransport(): Promise<void> {
           return;
         }
 
-        process.env.MIMECAST_CLIENT_ID = clientId;
-        process.env.MIMECAST_CLIENT_SECRET = clientSecret;
-        if (region) process.env.MIMECAST_REGION = region;
+        requestCreds = buildCredentials(clientId, clientSecret, region) ?? undefined;
       }
 
-      // Create fresh server + transport per request (stateless)
-      const server = createMcpServer();
+      // Create fresh server + transport per request (stateless).
+      // Per-request creds are captured in the closure; no global state written.
+      const server = createMcpServer(requestCreds);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

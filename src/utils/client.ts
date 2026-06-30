@@ -1,8 +1,12 @@
 /**
- * Lazy-loaded Mimecast client singleton
+ * Mimecast client factory — request-scoped, no global singleton
  *
- * In gateway mode (AUTH_MODE=gateway), credentials come from request headers
- * injected into env vars by the HTTP handler before each MCP request.
+ * Credentials are resolved per-call in priority order:
+ *   1. An explicit MimecastCredentials object (gateway / request-scoped)
+ *   2. process.env MIMECAST_* vars (stdio / single-tenant env mode)
+ *
+ * process.env is never mutated by request handlers; callers pass credentials
+ * directly to getClient() so concurrent requests cannot contaminate each other.
  */
 
 import type { MimecastClient } from '@wyre-technology/node-mimecast';
@@ -14,9 +18,6 @@ export interface MimecastCredentials {
   region: string;
   baseUrl: string;
 }
-
-let _client: MimecastClient | null = null;
-let _credentials: MimecastCredentials | null = null;
 
 /**
  * Mimecast regional base URLs
@@ -33,69 +34,72 @@ const REGION_URLS: Record<string, string> = {
 };
 
 /**
- * Read credentials from environment variables
+ * Build a MimecastCredentials object from raw field values.
+ * Returns null when required fields (clientId, clientSecret) are absent.
  */
-export function getCredentials(): MimecastCredentials | null {
-  const clientId = process.env.MIMECAST_CLIENT_ID;
-  const clientSecret = process.env.MIMECAST_CLIENT_SECRET;
-  const region = (process.env.MIMECAST_REGION || 'us').toLowerCase();
-
-  if (!clientId || !clientSecret) {
-    logger.warn('Missing Mimecast credentials', {
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-    });
-    return null;
-  }
-
-  const baseUrl = REGION_URLS[region] ?? REGION_URLS['us'];
-
-  return { clientId, clientSecret, region, baseUrl };
+export function buildCredentials(
+  clientId: string | undefined,
+  clientSecret: string | undefined,
+  region?: string | undefined,
+): MimecastCredentials | null {
+  if (!clientId || !clientSecret) return null;
+  const r = (region || 'us').toLowerCase();
+  return { clientId, clientSecret, region: r, baseUrl: REGION_URLS[r] ?? REGION_URLS['us'] };
 }
 
 /**
- * Get or create the Mimecast client (lazy initialization with credential change detection)
+ * Read credentials from environment variables.
+ * Used by stdio / single-tenant deployments; never called during gateway requests.
  */
-export async function getClient(): Promise<MimecastClient> {
-  const creds = getCredentials();
+export function getCredentials(): MimecastCredentials | null {
+  const creds = buildCredentials(
+    process.env.MIMECAST_CLIENT_ID,
+    process.env.MIMECAST_CLIENT_SECRET,
+    process.env.MIMECAST_REGION,
+  );
+  if (!creds) {
+    logger.warn('Missing Mimecast credentials', {
+      hasClientId: !!process.env.MIMECAST_CLIENT_ID,
+      hasClientSecret: !!process.env.MIMECAST_CLIENT_SECRET,
+    });
+  }
+  return creds;
+}
+
+/**
+ * Construct a Mimecast client from the supplied credentials.
+ *
+ * When `credsOverride` is provided (gateway / request-scoped mode) it is used
+ * directly and process.env is never consulted. When omitted the function falls
+ * back to getCredentials() (env / stdio mode).
+ *
+ * A new client instance is created for every call — MimecastClient is cheap
+ * and holds no shared mutable state, so there is no benefit to caching across
+ * requests (which would reintroduce the cross-tenant leak risk).
+ */
+export async function getClient(credsOverride?: MimecastCredentials): Promise<MimecastClient> {
+  const creds = credsOverride ?? getCredentials();
 
   if (!creds) {
     throw new Error(
       'No Mimecast credentials configured. ' +
-      'Set MIMECAST_CLIENT_ID, MIMECAST_CLIENT_SECRET, and optionally MIMECAST_REGION.'
+      'Set MIMECAST_CLIENT_ID, MIMECAST_CLIENT_SECRET, and optionally MIMECAST_REGION.',
     );
   }
 
-  // Invalidate cached client if credentials changed
-  if (
-    _client &&
-    _credentials &&
-    (creds.clientId !== _credentials.clientId ||
-      creds.clientSecret !== _credentials.clientSecret ||
-      creds.region !== _credentials.region)
-  ) {
-    logger.info('Credentials changed — recreating Mimecast client');
-    _client = null;
-  }
-
-  if (!_client) {
-    const { MimecastClient } = await import('@wyre-technology/node-mimecast');
-    logger.info('Creating Mimecast client', { region: creds.region, baseUrl: creds.baseUrl });
-    _client = new MimecastClient({
-      clientId: creds.clientId,
-      clientSecret: creds.clientSecret,
-      baseUrl: creds.baseUrl,
-    });
-    _credentials = creds;
-  }
-
-  return _client;
+  const { MimecastClient } = await import('@wyre-technology/node-mimecast');
+  logger.info('Creating Mimecast client', { region: creds.region, baseUrl: creds.baseUrl });
+  return new MimecastClient({
+    clientId: creds.clientId,
+    clientSecret: creds.clientSecret,
+    baseUrl: creds.baseUrl,
+  });
 }
 
 /**
- * Clear the cached client (useful for testing)
+ * No-op kept for test compatibility — no singleton to clear.
+ * @deprecated Tests should no longer rely on a module-level singleton.
  */
 export function clearClient(): void {
-  _client = null;
-  _credentials = null;
+  // intentional no-op: there is no shared client to clear
 }

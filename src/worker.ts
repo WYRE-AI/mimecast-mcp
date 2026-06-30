@@ -1,6 +1,12 @@
 /**
  * Cloudflare Worker entry point for Mimecast MCP server
- * Stateless — one transport per request
+ * Stateless — one transport per request.
+ *
+ * Security: process.env is NEVER mutated per-request. Worker env bindings are
+ * resolved once into a MimecastCredentials object that is passed explicitly
+ * through createMcpServer() → handler.handleCall() → getClient(). No global
+ * credential state is written so concurrent isolate requests cannot
+ * contaminate each other's credentials.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -9,7 +15,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDomainHandler, getAvailableDomains } from './domains/index.js';
 import { isDomainName, type DomainName } from './utils/types.js';
-import { getCredentials } from './utils/client.js';
+import { buildCredentials, type MimecastCredentials } from './utils/client.js';
 import { logger } from './utils/logger.js';
 
 interface Env {
@@ -18,7 +24,7 @@ interface Env {
   MIMECAST_REGION?: string;
 }
 
-async function createMcpServer(): Promise<Server> {
+async function createMcpServer(creds?: MimecastCredentials): Promise<Server> {
   const server = new Server(
     { name: 'mimecast-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
@@ -71,7 +77,6 @@ async function createMcpServer(): Promise<Server> {
       }
 
       if (name === 'mimecast_status') {
-        const creds = getCredentials();
         return {
           content: [{
             type: 'text',
@@ -87,7 +92,8 @@ async function createMcpServer(): Promise<Server> {
       const domain = toolToDomain.get(name);
       if (domain) {
         const handler = await getDomainHandler(domain);
-        return await handler.handleCall(name, (args as Record<string, unknown>) ?? {});
+        // Pass per-request creds; handler passes them to getClient()
+        return await handler.handleCall(name, (args as Record<string, unknown>) ?? {}, creds);
       }
 
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
@@ -120,16 +126,18 @@ export default {
       });
     }
 
-    // Inject env binding credentials
-    if (env.MIMECAST_CLIENT_ID) process.env.MIMECAST_CLIENT_ID = env.MIMECAST_CLIENT_ID;
-    if (env.MIMECAST_CLIENT_SECRET) process.env.MIMECAST_CLIENT_SECRET = env.MIMECAST_CLIENT_SECRET;
-    if (env.MIMECAST_REGION) process.env.MIMECAST_REGION = env.MIMECAST_REGION;
+    // Resolve credentials from Worker env bindings — never mutate process.env
+    const creds = buildCredentials(
+      env.MIMECAST_CLIENT_ID,
+      env.MIMECAST_CLIENT_SECRET,
+      env.MIMECAST_REGION,
+    ) ?? undefined;
 
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
     });
 
-    const server = await createMcpServer();
+    const server = await createMcpServer(creds);
     await server.connect(transport);
     return transport.handleRequest(request);
   },

@@ -3,6 +3,7 @@
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { MimecastCredentials } from './client.js';
 
 export type DomainName = 'messages' | 'threats' | 'queue';
 
@@ -13,9 +14,18 @@ export type CallToolResult = {
 
 export interface DomainHandler {
   getTools(): Tool[];
+  /**
+   * Handle a tool call.
+   *
+   * @param toolName - The tool to invoke.
+   * @param args     - Tool arguments.
+   * @param creds    - Per-request credentials (gateway mode). When omitted the
+   *                   handler falls back to process.env (stdio / env mode).
+   */
   handleCall(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    creds?: MimecastCredentials,
   ): Promise<CallToolResult>;
 }
 
