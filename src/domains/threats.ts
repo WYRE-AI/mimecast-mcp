@@ -6,7 +6,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { DomainHandler, CallToolResult } from '../utils/types.js';
-import { getClient } from '../utils/client.js';
+import { getClient, type MimecastCredentials } from '../utils/client.js';
 import { logger } from '../utils/logger.js';
 
 function getTools(): Tool[] {
@@ -101,9 +101,10 @@ function getTools(): Tool[] {
 
 async function handleCall(
   toolName: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  creds?: MimecastCredentials,
 ): Promise<CallToolResult> {
-  const client = await getClient();
+  const client = await getClient(creds);
 
   switch (toolName) {
     case 'mimecast_get_threat_incidents': {
