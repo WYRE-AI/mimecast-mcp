@@ -1,4 +1,4 @@
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 ARG GITHUB_TOKEN
 WORKDIR /app
 COPY package*.json .npmrc ./
@@ -9,7 +9,7 @@ COPY . .
 RUN npm run build
 RUN npm prune --omit=dev && npm cache clean --force && rm -f .npmrc
 
-FROM node:22-alpine AS production
+FROM node:26-alpine AS production
 RUN addgroup -g 1001 -S appuser && adduser -S appuser -u 1001 -G appuser
 WORKDIR /app
 COPY package*.json ./
