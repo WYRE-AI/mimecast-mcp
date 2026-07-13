@@ -23,16 +23,16 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.0",
-    "@cloudflare/workers-types": "^4.20260520.1",
-    "@eslint/js": "^9.39.4",
-    "@types/node": "^26.0.0",
-    "eslint": "^9.39.4",
-    "globals": "^17.6.0",
+    "@cloudflare/workers-types": "^5.20260713.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
     "tsup": "^8.0.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1",
-    "vitest": "^4.1.9",
-    "wrangler": "^4.0.0"
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.110.0"
   },
   "engines": {
     "node": ">=18.0.0"
