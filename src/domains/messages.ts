@@ -8,6 +8,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { DomainHandler, CallToolResult } from '../utils/types.js';
 import { getClient, type MimecastCredentials } from '../utils/client.js';
 import { logger } from '../utils/logger.js';
+import { buildMessageCard, MESSAGE_CARD_META } from '../card.builder.js';
 
 /** Mirrors the `messageStatus` union accepted by node-mimecast's messages.find(). */
 type MessageStatus =
@@ -63,6 +64,7 @@ function getTools(): Tool[] {
       name: 'mimecast_get_message_info',
       description:
         'Get detailed metadata for a specific message by its Mimecast ID, including headers, routing information, and rejection details.',
+      _meta: MESSAGE_CARD_META,
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -146,8 +148,12 @@ async function handleCall(
       const id = args.id as string;
       logger.info('API call: messages.getInfo', { id });
       const info = await client.messages.getInfo(id);
+      // MCP Apps: attach the normalized payload the ui:// message card
+      // renders from. Best-effort — a null card just means no UI surface.
+      const card = buildMessageCard(info);
+      const payload = card ? { ...info, _card: card } : info;
       return {
-        content: [{ type: 'text', text: JSON.stringify(info, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
       };
     }
 

@@ -16,6 +16,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDomainHandler, getAvailableDomains } from './domains/index.js';
 import { isDomainName, type DomainName } from './utils/types.js';
 import { buildCredentials, type MimecastCredentials } from './utils/client.js';
+import { registerResourceHandlers } from './resources.js';
 import { logger } from './utils/logger.js';
 
 interface Env {
@@ -27,8 +28,11 @@ interface Env {
 async function createMcpServer(creds?: MimecastCredentials): Promise<Server> {
   const server = new Server(
     { name: 'mimecast-mcp', version: '1.0.0' },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, resources: {} } }
   );
+
+  // MCP Apps (SEP-1865): serve the ui:// message-card resource
+  registerResourceHandlers(server);
 
   const navigateTool: Tool = {
     name: 'mimecast_navigate',

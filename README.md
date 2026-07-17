@@ -80,6 +80,15 @@ Email queue management
 ### Threats
 Threat intelligence and detection data
 
+## Interactive Message Card (MCP Apps)
+
+`mimecast_get_message_info` renders as an interactive, read-only card in MCP
+Apps hosts (Claude Desktop/web) showing delivery status, sender/recipients,
+spam score, and rejection details; plain-JSON behavior is unchanged in other
+hosts. The card is neutral by default, brandable via `window.__BRAND__`
+injection or `MCP_BRAND_*` env vars (`MCP_BRAND_NAME`, `MCP_BRAND_LOGO_URL`,
+`MCP_BRAND_PRIMARY_COLOR`, `MCP_BRAND_ACCENT_COLOR`, `MCP_BRAND_BG`,
+`MCP_BRAND_TEXT`) — no rebuild needed.
 
 ## Development
 
