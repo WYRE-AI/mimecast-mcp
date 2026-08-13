@@ -19,7 +19,7 @@
     "cf:dev": "npm run build && wrangler dev"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@wyre-technology/node-mimecast": "^1.0.0"
   },
   "devDependencies": {
