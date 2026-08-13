@@ -34,6 +34,13 @@ import { isDomainName, type DomainName } from './utils/types.js';
 import { buildCredentials, getCredentials, type MimecastCredentials } from './utils/client.js';
 import { registerResourceHandlers } from './resources.js';
 import { logger } from './utils/logger.js';
+import { verifyS2sHeader, S2S_HEADER } from './s2s-verify.js';
+
+// Conduit service-to-service auth (gateway#377 parity). Non-empty =
+// enforce X-Gateway-S2S on every /mcp request; empty = disabled, behavior
+// exactly as before (dark-by-default until the gateway provisions this
+// container's derived subkey). See src/s2s-verify.ts.
+const S2S_SECRET = process.env.CONDUIT_S2S_SECRET || '';
 
 // ─── Domain Configuration ───────────────────────────────────────────────────
 
@@ -291,6 +298,19 @@ async function startHttpTransport(): Promise<void> {
     }
 
     if (url.pathname === '/mcp') {
+      // Conduit service-to-service auth (gateway#377 parity): rejected
+      // BEFORE any credential extraction, mirroring every other ported
+      // wrapper (e.g. containers/sentinelone-mcp/gateway_wrapper.py).
+      if (S2S_SECRET && !verifyS2sHeader(req.headers[S2S_HEADER] as string | undefined, S2S_SECRET)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'Missing or invalid X-Gateway-S2S header: this endpoint only accepts requests signed by the gateway.',
+          })
+        );
+        return;
+      }
+
       // Resolve per-request credentials without touching process.env
       let requestCreds: MimecastCredentials | undefined;
 
