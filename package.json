@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@wyre-technology/node-mimecast": "^1.0.0"
+    "@wyre-technology/node-mimecast": "^1.0.1"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.0",
