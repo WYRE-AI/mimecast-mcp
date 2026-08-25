@@ -7,11 +7,11 @@
   "long_description": "Provides Claude with tools to interact with the Mimecast Email Security API. Supports message tracking and search, placing and releasing message holds, threat intelligence (TTP URL/attachment/impersonation logs), threat remediation incidents, audit log retrieval, and email delivery queue monitoring.",
   "author": {
     "name": "Wyre Technology",
-    "url": "https://github.com/wyre-technology"
+    "url": "https://github.com/WYRE-AI"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/wyre-technology/mimecast-mcp"
+    "url": "https://github.com/WYRE-AI/mimecast-mcp"
   },
   "license": "MIT",
   "keywords": ["mimecast", "email", "security", "mcp", "threat-intelligence"],
