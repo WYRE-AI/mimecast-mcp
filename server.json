@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.wyre-technology/mimecast-mcp",
+  "name": "io.github.WYRE-AI/mimecast-mcp",
   "title": "Mimecast",
   "description": "MCP server for Mimecast email security: message queue, held messages, domains, and threats.",
   "repository": {
-    "url": "https://github.com/wyre-technology/mimecast-mcp",
+    "url": "https://github.com/WYRE-AI/mimecast-mcp",
     "source": "github"
   },
   "version": "0.0.0",
-  "websiteUrl": "https://github.com/wyre-technology/mimecast-mcp",
+  "websiteUrl": "https://github.com/WYRE-AI/mimecast-mcp",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/wyre-technology/mimecast-mcp:0.0.0",
+      "identifier": "ghcr.io/wyre-ai/mimecast-mcp:0.0.0",
       "transport": {
         "type": "stdio"
       },

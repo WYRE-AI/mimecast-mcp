@@ -7,12 +7,12 @@ A Model Context Protocol (MCP) server for Mimecast email security. Enables AI as
 
 This is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that connects Claude (or any MCP-compatible AI) to your Mimecast environment.
 
-> **Part of the [MSP Claude Plugins](https://github.com/wyre-technology) ecosystem** — a growing suite of AI integrations for the MSP stack. Built by MSPs, for MSPs.
+> **Part of the [MSP Claude Plugins](https://github.com/WYRE-AI) ecosystem** — a growing suite of AI integrations for the MSP stack. Built by MSPs, for MSPs.
 
 ## Installation
 
 ```bash
-npm install @wyre-technology/mimecast-mcp
+npm install @wyre-ai/mimecast-mcp
 ```
 
 ## Configuration
@@ -37,7 +37,7 @@ Add to your Claude Desktop `claude_desktop_config.json`:
   "mcpServers": {
     "mimecast-mcp": {
       "command": "npx",
-      "args": ["@wyre-technology/mimecast-mcp"],
+      "args": ["@wyre-ai/mimecast-mcp"],
       "env": {
         "MIMECAST_CLIENT_ID": "your-mimecast-client-id"
         "MIMECAST_CLIENT_SECRET": "your-mimecast-client-secret"
@@ -55,7 +55,7 @@ claude mcp add mimecast-mcp \
   -e MIMECAST_CLIENT_ID=your-value \
   -e MIMECAST_CLIENT_SECRET=your-value \
   -e MIMECAST_REGION=your-value \
-  -- npx -y @wyre-technology/mimecast-mcp
+  -- npx -y @wyre-ai/mimecast-mcp
 ```
 
 ### Docker
@@ -94,7 +94,7 @@ injection or `MCP_BRAND_*` env vars (`MCP_BRAND_NAME`, `MCP_BRAND_LOGO_URL`,
 
 ```bash
 # Clone the repository
-git clone https://github.com/wyre-technology/mimecast-mcp.git
+git clone https://github.com/WYRE-AI/mimecast-mcp.git
 cd mimecast-mcp
 
 # Install dependencies

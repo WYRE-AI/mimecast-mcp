@@ -1,5 +1,5 @@
 {
-  "name": "@wyre-technology/mimecast-mcp",
+  "name": "@wyre-ai/mimecast-mcp",
   "version": "1.0.1",
   "description": "MCP server for Mimecast Email Security — message tracking, threat intelligence, and email queue management",
   "type": "module",
@@ -43,7 +43,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/wyre-technology/mimecast-mcp.git"
+    "url": "https://github.com/WYRE-AI/mimecast-mcp.git"
   },
   "license": "MIT",
   "publishConfig": {

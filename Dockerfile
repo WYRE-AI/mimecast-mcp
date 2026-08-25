@@ -27,6 +27,6 @@ ENV NODE_ENV=production \
 CMD ["node", "dist/index.js"]
 
 LABEL org.opencontainers.image.title="mimecast-mcp"
-LABEL org.opencontainers.image.source="https://github.com/wyre-technology/mimecast-mcp"
+LABEL org.opencontainers.image.source="https://github.com/WYRE-AI/mimecast-mcp"
 LABEL org.opencontainers.image.vendor="Wyre Technology"
-LABEL io.modelcontextprotocol.server.name="io.github.wyre-technology/mimecast-mcp"
+LABEL io.modelcontextprotocol.server.name="io.github.WYRE-AI/mimecast-mcp"
