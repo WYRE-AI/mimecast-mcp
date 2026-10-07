@@ -26,6 +26,10 @@ const AUDIT_CATEGORY_ALIASES: Record<string, string> = {
   continuity: 'continuity_services_logs',
 };
 
+const ISO_8601_HINT = 'Use ISO 8601, for example 2026-03-01T00:00:00+0000.';
+/** Z or an explicit numeric offset. A bare date-time is local time in Date.parse. */
+const HAS_EXPLICIT_ZONE = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+
 export function formatMimecastDateTime(date: Date): string {
   return `${date.toISOString().slice(0, 19)}+0000`;
 }
@@ -33,13 +37,18 @@ export function formatMimecastDateTime(date: Date): string {
 export function toMimecastDateTime(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
-    throw new Error('Date value is empty. Use ISO 8601, for example 2026-03-01T00:00:00+0000.');
+    throw new Error(`Date value is empty. ${ISO_8601_HINT}`);
   }
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
+  if (!HAS_EXPLICIT_ZONE.test(trimmed)) {
     throw new Error(
-      `Invalid date "${input}". Use ISO 8601, for example 2026-03-01T00:00:00+0000.`,
+      `Date must include a UTC designator (Z or an explicit offset). ${ISO_8601_HINT}`,
     );
+  }
+  // ±HHMM is not portable across Date.parse implementations; ±HH:MM is.
+  const normalized = trimmed.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid date. ${ISO_8601_HINT}`);
   }
   return formatMimecastDateTime(parsed);
 }
@@ -58,27 +67,33 @@ export function optionalMimecastDateTime(input: unknown): string | undefined {
  * only retains 60 days. Omitting them makes Mimecast return an empty `data`
  * array (often with a fail entry the client does not surface).
  */
+function parseBound(input: unknown): Date | undefined {
+  const formatted = optionalMimecastDateTime(input);
+  if (!formatted) return undefined;
+  return new Date(formatted.replace('+0000', 'Z'));
+}
+
 export function resolveAuditWindow(
   from: unknown,
   to: unknown,
   now: Date = new Date(),
 ): { from: string; to: string } {
-  const end = optionalMimecastDateTime(to) ?? formatMimecastDateTime(now);
-  const start =
-    optionalMimecastDateTime(from) ??
-    formatMimecastDateTime(new Date(now.getTime() - AUDIT_DEFAULT_WINDOW_MS));
+  const endDate = parseBound(to) ?? now;
+  // A supplied end is the anchor. The default start is 7 days before that
+  // end, not 7 days before now.
+  const startDate = parseBound(from) ?? new Date(endDate.getTime() - AUDIT_DEFAULT_WINDOW_MS);
 
-  const startMs = Date.parse(start.replace('+0000', 'Z'));
-  const endMs = Date.parse(end.replace('+0000', 'Z'));
-  if (endMs < startMs) {
-    throw new Error(`Audit end ${end} is before start ${start}.`);
-  }
-  if (startMs < now.getTime() - AUDIT_MAX_AGE_MS) {
+  if (endDate.getTime() < startDate.getTime()) {
     throw new Error(
-      `Audit history is limited to the last 60 days (start ${start} is older than that). Narrow from_date.`,
+      `Audit end ${formatMimecastDateTime(endDate)} is before start ${formatMimecastDateTime(startDate)}.`,
     );
   }
-  return { from: start, to: end };
+  if (startDate.getTime() < now.getTime() - AUDIT_MAX_AGE_MS) {
+    throw new Error(
+      `Audit history is limited to the last 60 days (start ${formatMimecastDateTime(startDate)} is older than that). Narrow from_date.`,
+    );
+  }
+  return { from: formatMimecastDateTime(startDate), to: formatMimecastDateTime(endDate) };
 }
 
 export function normalizeAuditCategories(categories: unknown): string[] | undefined {

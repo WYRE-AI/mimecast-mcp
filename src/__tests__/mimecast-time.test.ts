@@ -15,8 +15,25 @@ describe('toMimecastDateTime', () => {
     expect(toMimecastDateTime('2026-09-01T01:30:00+0000')).toBe('2026-09-01T01:30:00+0000');
   });
 
-  it('rejects a value that is not a date', () => {
-    expect(() => toMimecastDateTime('not-a-date')).toThrow(/Invalid date/);
+  it('rejects a value that is not a date without echoing the input', () => {
+    expect(() => toMimecastDateTime('not-a-dateZ')).toThrow(/Invalid date/);
+    try {
+      toMimecastDateTime('not-a-dateZ');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(/ISO 8601/);
+      expect(message).not.toContain('not-a-date');
+    }
+  });
+
+  it('rejects a date-time that has no Z or explicit offset', () => {
+    expect(() => toMimecastDateTime('2026-09-01T00:00:00')).toThrow(/explicit offset/);
+    try {
+      toMimecastDateTime('2026-09-01T00:00:00');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain('2026-09-01');
+    }
   });
 });
 
@@ -27,6 +44,13 @@ describe('resolveAuditWindow', () => {
     expect(resolveAuditWindow(undefined, undefined, now)).toEqual({
       from: '2026-09-30T12:00:00+0000',
       to: '2026-10-07T12:00:00+0000',
+    });
+  });
+
+  it('derives a missing start from the supplied end, not from now', () => {
+    expect(resolveAuditWindow(undefined, '2026-10-01T00:00:00Z', now)).toEqual({
+      from: '2026-09-24T00:00:00+0000',
+      to: '2026-10-01T00:00:00+0000',
     });
   });
 
@@ -63,8 +87,10 @@ describe('asLogList', () => {
     ]);
   });
 
-  it('returns an empty list for null and for an object with no log array', () => {
+  it('keeps an empty log array and rejects a wrapper that is missing or not an array', () => {
     expect(asLogList(null)).toEqual([]);
-    expect(asLogList({ status: 200 })).toEqual([]);
+    expect(asLogList({ clickLogs: [] })).toEqual([]);
+    expect(() => asLogList({ status: 200 })).toThrow(/missing clickLogs/);
+    expect(() => asLogList({ clickLogs: 'nope' })).toThrow(/not an array/);
   });
 });
