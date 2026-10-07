@@ -8,6 +8,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { DomainHandler, CallToolResult } from '../utils/types.js';
 import { getClient, type MimecastCredentials } from '../utils/client.js';
 import { logger } from '../utils/logger.js';
+import { optionalMimecastDateTime } from '../utils/mimecast-time.js';
 import { buildMessageCard, MESSAGE_CARD_META } from '../card.builder.js';
 
 /** Mirrors the `messageStatus` union accepted by node-mimecast's messages.find(). */
@@ -20,7 +21,7 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_find_message',
       description:
-        'Search for email messages using Mimecast message tracking. Filter by sender, recipient, subject, date range, or delivery status.',
+        'Search for email messages using Mimecast message tracking. Filter by sender, recipient, subject, date range, or delivery status. Requires Gateway | Tracking | Read. Dates use ISO 8601 UTC (2026-03-01T00:00:00+0000); a trailing Z is accepted.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -38,11 +39,13 @@ function getTools(): Tool[] {
           },
           from_date: {
             type: 'string',
-            description: 'Start date-time in ISO 8601 format (e.g. 2026-03-01T00:00:00Z)',
+            description:
+              'Start date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted and converted.',
           },
           to_date: {
             type: 'string',
-            description: 'End date-time in ISO 8601 format',
+            description:
+              'End date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted and converted.',
           },
           status: {
             type: 'string',
@@ -79,7 +82,7 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_hold_message',
       description:
-        'Place a message on hold in the Mimecast gateway to prevent delivery while under review.',
+        'Place a message on hold in the Mimecast gateway to prevent delivery while under review. Requires Account | Monitoring | Held | Edit.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -98,7 +101,7 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_release_message',
       description:
-        'Release a held message from the Mimecast gateway to allow delivery to the recipient.',
+        'Release a held message from the Mimecast gateway to allow delivery to the recipient. Requires Account | Monitoring | Held | Edit.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -132,8 +135,8 @@ async function handleCall(
         value: args.value as string | undefined,
         senderAddress: args.sender_address as string | undefined,
         recipientAddress: args.recipient_address as string | undefined,
-        from: args.from_date as string | undefined,
-        to: args.to_date as string | undefined,
+        from: optionalMimecastDateTime(args.from_date),
+        to: optionalMimecastDateTime(args.to_date),
         messageStatus: args.status as MessageStatus | undefined,
         pageSize,
         pageToken: args.page_token as string | undefined,

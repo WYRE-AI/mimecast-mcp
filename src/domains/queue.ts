@@ -14,7 +14,7 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_get_queue_status',
       description:
-        'Get the current email delivery queue status from Mimecast, including counts and ages of queued inbound and outbound messages.',
+        'Get the current email delivery queue status from Mimecast, including counts and ages of queued inbound and outbound messages. Requires Account | Dashboard | Read. A permissions error means that role permission is missing.',
       inputSchema: {
         type: 'object' as const,
         properties: {},
