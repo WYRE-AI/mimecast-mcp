@@ -37,6 +37,7 @@ vi.mock('@wyre-technology/node-mimecast', () => ({
 }));
 
 import { threatsHandler } from '../domains/threats.js';
+import { formatMimecastDateTime } from '../utils/mimecast-time.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -106,8 +107,8 @@ describe('threatsHandler.handleCall', () => {
 
       expect(getUrlLogsMock).toHaveBeenCalledWith({
         type: 'url',
-        from: '2026-01-01T00:00:00Z',
-        to: '2026-01-02T00:00:00Z',
+        from: '2026-01-01T00:00:00+0000',
+        to: '2026-01-02T00:00:00+0000',
         pageSize: 5,
         pageToken: 'tok-2',
       });
@@ -166,6 +167,31 @@ describe('threatsHandler.handleCall', () => {
       expect(JSON.parse(result.content[0].text)).toEqual({ type: 'url', logs: [], count: 0 });
     });
 
+    it('unwraps clickLogs when the client returns the TTP wrapper object', async () => {
+      getUrlLogsMock.mockResolvedValue({
+        clickLogs: [{ url: 'https://malicious.example', action: 'block' }],
+      });
+
+      const result = await threatsHandler.handleCall('mimecast_get_ttp_logs', { type: 'url' });
+
+      expect(JSON.parse(result.content[0].text)).toEqual({
+        type: 'url',
+        logs: [{ url: 'https://malicious.example', action: 'block' }],
+        count: 1,
+      });
+    });
+
+    it('unwraps attachmentLogs and impersonationLogs wrapper objects', async () => {
+      getAttachmentLogsMock.mockResolvedValue({ attachmentLogs: [{ fileName: 'a.exe' }] });
+      getImpersonationLogsMock.mockResolvedValue({ impersonationLogs: [{ senderAddress: 'ceo@lookalike.test' }] });
+
+      const attachment = await threatsHandler.handleCall('mimecast_get_ttp_logs', { type: 'attachment' });
+      const impersonation = await threatsHandler.handleCall('mimecast_get_ttp_logs', { type: 'impersonation' });
+
+      expect(JSON.parse(attachment.content[0].text).logs).toEqual([{ fileName: 'a.exe' }]);
+      expect(JSON.parse(impersonation.content[0].text).logs).toEqual([{ senderAddress: 'ceo@lookalike.test' }]);
+    });
+
     it('propagates errors raised by the underlying client', async () => {
       getUrlLogsMock.mockRejectedValue(new Error('ttp logs unavailable'));
 
@@ -178,34 +204,59 @@ describe('threatsHandler.handleCall', () => {
   describe('mimecast_get_audit_events', () => {
     it('maps args, including the categories array, to the getAuditEvents() call shape', async () => {
       getAuditEventsMock.mockResolvedValue([{ id: 'audit-001' }]);
+      const end = new Date();
+      const start = new Date(end.getTime() - 2 * 24 * 60 * 60 * 1000);
 
       const result = await threatsHandler.handleCall('mimecast_get_audit_events', {
-        from_date: '2026-01-01T00:00:00Z',
-        to_date: '2026-01-02T00:00:00Z',
+        from_date: start.toISOString(),
+        to_date: end.toISOString(),
         categories: ['administration', 'policy'],
         page_size: 20,
         page_token: 'tok-3',
       });
 
+      const from = formatMimecastDateTime(start);
+      const to = formatMimecastDateTime(end);
       expect(getAuditEventsMock).toHaveBeenCalledWith({
-        from: '2026-01-01T00:00:00Z',
-        to: '2026-01-02T00:00:00Z',
-        categories: ['administration', 'policy'],
+        from,
+        to,
+        categories: ['account_logs', 'policy_logs'],
         pageSize: 20,
         pageToken: 'tok-3',
       });
       expect(JSON.parse(result.content[0].text)).toEqual({
         events: [{ id: 'audit-001' }],
         count: 1,
+        from,
+        to,
       });
     });
 
-    it('normalizes a non-array API response to an empty list', async () => {
+    it('defaults a missing window to the last 7 days in Mimecast +0000 form', async () => {
       getAuditEventsMock.mockResolvedValue([]);
 
       const result = await threatsHandler.handleCall('mimecast_get_audit_events', {});
 
-      expect(JSON.parse(result.content[0].text)).toEqual({ events: [], count: 0 });
+      const call = getAuditEventsMock.mock.calls[0][0] as { from: string; to: string };
+      expect(call.from).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0000$/);
+      expect(call.to).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0000$/);
+      const span = Date.parse(call.to.replace('+0000', 'Z')) - Date.parse(call.from.replace('+0000', 'Z'));
+      expect(span).toBe(7 * 24 * 60 * 60 * 1000);
+
+      const payload = JSON.parse(result.content[0].text) as { events: unknown[]; count: number; hint: string };
+      expect(payload.events).toEqual([]);
+      expect(payload.count).toBe(0);
+      expect(payload.hint).toContain('Account | Logs | Read');
+    });
+
+    it('rejects an audit window older than 60 days instead of returning an empty list', async () => {
+      await expect(
+        threatsHandler.handleCall('mimecast_get_audit_events', {
+          from_date: '2000-01-01T00:00:00Z',
+          to_date: '2000-01-02T00:00:00Z',
+        }),
+      ).rejects.toThrow(/60 days/);
+      expect(getAuditEventsMock).not.toHaveBeenCalled();
     });
 
     it('propagates errors raised by the underlying client', async () => {

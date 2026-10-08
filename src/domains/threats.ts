@@ -7,14 +7,20 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { DomainHandler, CallToolResult } from '../utils/types.js';
 import { getClient, type MimecastCredentials } from '../utils/client.js';
+import { asLogList } from '../utils/log-list.js';
 import { logger } from '../utils/logger.js';
+import {
+  normalizeAuditCategories,
+  optionalMimecastDateTime,
+  resolveAuditWindow,
+} from '../utils/mimecast-time.js';
 
 function getTools(): Tool[] {
   return [
     {
       name: 'mimecast_get_threat_incidents',
       description:
-        'Get threat remediation incidents from Mimecast. Returns incidents where malicious content was detected and remediation actions were taken.',
+        'Get threat remediation incidents from Mimecast. Returns incidents where malicious content was detected and remediation actions were taken. Requires the API application role permission Services | Threat Remediation | Read; a permissions error means that permission is missing.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -36,7 +42,7 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_get_ttp_logs',
       description:
-        'Get Targeted Threat Protection logs. Retrieve URL click logs, attachment sandbox results, or impersonation protection hits.',
+        'Get Targeted Threat Protection logs. Retrieve URL click logs, attachment sandbox results, or impersonation protection hits. Requires Monitoring | URL Protection | Read, Monitoring | Attachment Protection | Read, or Monitoring | Impersonation Protection | Read, matching type. Dates use ISO 8601 (2026-03-01T00:00:00+0000 or a trailing Z).',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -47,11 +53,13 @@ function getTools(): Tool[] {
           },
           from_date: {
             type: 'string',
-            description: 'Start date-time in ISO 8601 format',
+            description:
+              'Start date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted and converted. Omit to use Mimecast\'s default (start of the current day).',
           },
           to_date: {
             type: 'string',
-            description: 'End date-time in ISO 8601 format',
+            description:
+              'End date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted and converted.',
           },
           page_size: {
             type: 'number',
@@ -68,22 +76,25 @@ function getTools(): Tool[] {
     {
       name: 'mimecast_get_audit_events',
       description:
-        'Retrieve Mimecast audit log entries. Useful for compliance reviews and investigating administrative changes.',
+        'Retrieve Mimecast audit log entries. Useful for compliance reviews and investigating administrative changes. The API requires a start and end; when omitted, the last 7 days are used. History is limited to 60 days. Requires Account | Logs | Read. Category filters use codes such as account_logs or policy_logs (not display names); omit categories to return every category.',
       inputSchema: {
         type: 'object' as const,
         properties: {
           from_date: {
             type: 'string',
-            description: 'Start date-time in ISO 8601 format',
+            description:
+              'Start date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted. Must be within the last 60 days. Defaults to 7 days before to_date.',
           },
           to_date: {
             type: 'string',
-            description: 'End date-time in ISO 8601 format',
+            description:
+              'End date-time in ISO 8601 UTC (2026-03-01T00:00:00+0000). A trailing Z is accepted. Defaults to now.',
           },
           categories: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Filter by event categories (e.g. ["administration", "policy"])',
+            description:
+              'Audit category codes from /api/audit/get-categories, for example ["account_logs", "policy_logs"]. Omit to return every category. Display names such as "administration" are mapped to account_logs.',
           },
           page_size: {
             type: 'number',
@@ -126,13 +137,13 @@ async function handleCall(
 
       const params = {
         type,
-        from: args.from_date as string | undefined,
-        to: args.to_date as string | undefined,
+        from: optionalMimecastDateTime(args.from_date),
+        to: optionalMimecastDateTime(args.to_date),
         pageSize: (args.page_size as number) || 50,
         pageToken: args.page_token as string | undefined,
       };
 
-      let logs: unknown[];
+      let logs: unknown;
       if (type === 'url') {
         logs = await client.threats.getUrlLogs(params);
       } else if (type === 'attachment') {
@@ -141,24 +152,39 @@ async function handleCall(
         logs = await client.threats.getImpersonationLogs(params);
       }
 
-      const result = Array.isArray(logs) ? logs : [];
+      // URL/attachment/impersonation responses nest the rows under
+      // clickLogs / attachmentLogs / impersonationLogs. A bare object here
+      // is that wrapper, not "no data".
+      const result = asLogList(logs);
       return {
         content: [{ type: 'text', text: JSON.stringify({ type, logs: result, count: result.length }, null, 2) }],
       };
     }
 
     case 'mimecast_get_audit_events': {
-      logger.info('API call: threats.getAuditEvents', { from: args.from_date, to: args.to_date });
+      const auditWindow = resolveAuditWindow(args.from_date, args.to_date);
+      const categories = normalizeAuditCategories(args.categories);
+      logger.info('API call: threats.getAuditEvents', { from: auditWindow.from, to: auditWindow.to });
       const events = await client.threats.getAuditEvents({
-        from: args.from_date as string | undefined,
-        to: args.to_date as string | undefined,
-        categories: args.categories as string[] | undefined,
+        from: auditWindow.from,
+        to: auditWindow.to,
+        categories,
         pageSize: (args.page_size as number) || 50,
         pageToken: args.page_token as string | undefined,
       });
       const result = Array.isArray(events) ? events : [];
+      const payload: Record<string, unknown> = {
+        events: result,
+        count: result.length,
+        from: auditWindow.from,
+        to: auditWindow.to,
+      };
+      if (result.length === 0) {
+        payload.hint =
+          'No audit events in this window. The API application needs Account | Logs | Read, and history only covers the last 60 days. Omit categories to search every log, or use codes such as account_logs and policy_logs.';
+      }
       return {
-        content: [{ type: 'text', text: JSON.stringify({ events: result, count: result.length }, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
       };
     }
 

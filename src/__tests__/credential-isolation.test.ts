@@ -53,7 +53,7 @@ describe('buildCredentials', () => {
     const { buildCredentials } = await import('../utils/client.js');
     const creds = buildCredentials('id', 'secret', 'eu');
     expect(creds!.region).toBe('eu');
-    expect(creds!.baseUrl).toBe('https://eu-api.mimecast.com');
+    expect(creds!.baseUrl).toBe('https://api.services.mimecast.com');
   });
 });
 
@@ -114,7 +114,7 @@ describe('getClient — request-scoped creds beat process.env', () => {
     };
     expect(callArg.clientId).toBe('request-id');
     expect(callArg.clientSecret).toBe('request-secret');
-    expect(callArg.baseUrl).toBe('https://eu-api.mimecast.com');
+    expect(callArg.baseUrl).toBe('https://api.services.mimecast.com');
     // Verify env creds were NOT used
     expect(callArg.clientId).not.toBe('env-id-should-not-be-used');
   });

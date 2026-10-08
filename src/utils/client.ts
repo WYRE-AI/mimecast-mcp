@@ -20,17 +20,25 @@ export interface MimecastCredentials {
 }
 
 /**
- * Mimecast regional base URLs
+ * API 2.0 OAuth (client id + secret, POST /oauth/token) is served from the
+ * global gateway. Hosts such as eu-api.mimecast.com are API 1.0 HMAC
+ * endpoints and reject this client's bearer-token flow. The application
+ * credentials select the account and its residency; `region` is kept so
+ * operators can still record which grid the tenant lives on.
+ *
+ * https://developer.services.mimecast.com/api-overview
  */
+export const API_V2_BASE_URL = 'https://api.services.mimecast.com';
+
 const REGION_URLS: Record<string, string> = {
-  us: 'https://api.services.mimecast.com',
-  eu: 'https://eu-api.mimecast.com',
-  de: 'https://de-api.mimecast.com',
-  ca: 'https://ca-api.mimecast.com',
-  za: 'https://za-api.mimecast.com',
-  au: 'https://au-api.mimecast.com',
-  offshore: 'https://offshore-api.mimecast.com',
-  je: 'https://je-api.mimecast.com',
+  us: API_V2_BASE_URL,
+  eu: API_V2_BASE_URL,
+  de: API_V2_BASE_URL,
+  ca: API_V2_BASE_URL,
+  za: API_V2_BASE_URL,
+  au: API_V2_BASE_URL,
+  offshore: API_V2_BASE_URL,
+  je: API_V2_BASE_URL,
 };
 
 /**

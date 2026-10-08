@@ -23,7 +23,7 @@ Set the following environment variables:
 |----------|----------|-------------|
 | `MIMECAST_CLIENT_ID` | Yes | Your Mimecast API client ID |
 | `MIMECAST_CLIENT_SECRET` | Yes | Your Mimecast API client secret |
-| `MIMECAST_REGION` | Yes | Your Mimecast region: us, eu, de, au, za, ca |
+| `MIMECAST_REGION` | Yes | Tenant grid label: `us`, `eu`, `de`, `au`, `za`, `ca`, `offshore`, or `je`. API 2.0 client-credentials calls all use `https://api.services.mimecast.com`. Regional hosts such as `eu-api.mimecast.com` are API 1.0 only and do not accept this server's OAuth flow. |
 | `MCP_TRANSPORT` | No | Transport mode: stdio (default) or http |
 
 ## Usage
@@ -39,9 +39,9 @@ Add to your Claude Desktop `claude_desktop_config.json`:
       "command": "npx",
       "args": ["@wyre-ai/mimecast-mcp"],
       "env": {
-        "MIMECAST_CLIENT_ID": "your-mimecast-client-id"
-        "MIMECAST_CLIENT_SECRET": "your-mimecast-client-secret"
-        "MIMECAST_REGION": "your-mimecast-region"
+        "MIMECAST_CLIENT_ID": "your-mimecast-client-id",
+        "MIMECAST_CLIENT_SECRET": "your-mimecast-client-secret",
+        "MIMECAST_REGION": "us"
       }
     }
   }
@@ -68,6 +68,25 @@ docker run \
   -e MIMECAST_REGION=your-value \
   -p 8080:8080 mimecast-mcp
 ```
+
+## API application permissions
+
+Create an **API 2.0** application in the Mimecast Administration Console (Services → API and Platform Integrations) and assign it a custom administrator role. The client id and client secret from that application are `MIMECAST_CLIENT_ID` and `MIMECAST_CLIENT_SECRET`. API 1.0 applications (application id, application key, access key, and secret key with HMAC signing) are not accepted.
+
+Grant only the permissions each tool calls. A permissions error from `mimecast_get_queue_status` or `mimecast_get_threat_incidents` means the role is missing the row below. An empty list from audit or TTP logs means the call was authorized and nothing matched the window.
+
+| Tool | Permission on the application role |
+| --- | --- |
+| `mimecast_find_message`, `mimecast_get_message_info` | Gateway \| Tracking \| Read |
+| `mimecast_hold_message`, `mimecast_release_message` | Account \| Monitoring \| Held \| Edit |
+| `mimecast_get_queue_status` | Account \| Dashboard \| Read |
+| `mimecast_get_threat_incidents` | Services \| Threat Remediation \| Read |
+| `mimecast_get_ttp_logs` (`type=url`) | Monitoring \| URL Protection \| Read |
+| `mimecast_get_ttp_logs` (`type=attachment`) | Monitoring \| Attachment Protection \| Read |
+| `mimecast_get_ttp_logs` (`type=impersonation`) | Monitoring \| Impersonation Protection \| Read |
+| `mimecast_get_audit_events` | Account \| Logs \| Read |
+
+`mimecast_get_audit_events` also requires a start and end. When the caller omits them, the server queries the last 7 days. Mimecast only keeps 60 days of audit history, and category filters must be codes such as `account_logs` or `policy_logs` (omit `categories` to search every log). Basic Administrator includes the read permissions in Mimecast's own integration guides; Threat Remediation and Held Edit are separate and must be added explicitly.
 
 ## Available Domains
 
