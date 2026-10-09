@@ -21,9 +21,16 @@
  * credentials extracted from headers are passed as an explicit argument
  * through createMcpServer() → handler.handleCall() → getClient(), so
  * concurrent requests cannot contaminate each other's credentials.
+ * Gateway mode never falls back to MIMECAST_* env credentials.
+ *
+ * HTTP transport refuses to start unless CONDUIT_S2S_SECRET is set.
+ * MCP_ALLOW_INSECURE_DEV=1 is a local-only escape hatch and logs a warning.
+ * The listen address defaults to 127.0.0.1 unless MCP_HTTP_HOST is set.
+ * /health and /healthz stay unauthenticated and do not read credentials.
+ * stdio does not use S2S auth.
  */
 
-import { createServer as createHttpServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -36,11 +43,29 @@ import { registerResourceHandlers } from './resources.js';
 import { logger } from './utils/logger.js';
 import { verifyS2sHeader, S2S_HEADER } from './s2s-verify.js';
 
-// Conduit service-to-service auth (gateway#377 parity). Non-empty =
-// enforce X-Gateway-S2S on every /mcp request; empty = disabled, behavior
-// exactly as before (dark-by-default until the gateway provisions this
-// container's derived subkey). See src/s2s-verify.ts.
-const S2S_SECRET = process.env.CONDUIT_S2S_SECRET || '';
+/**
+ * Secret for X-Gateway-S2S on /mcp. Read at HTTP startup, not module load.
+ * Empty is fail-closed: the process exits unless MCP_ALLOW_INSECURE_DEV=1.
+ * The secret value is never written to logs.
+ */
+function resolveHttpS2sSecret(): string {
+  const secret = process.env.CONDUIT_S2S_SECRET || '';
+  if (secret) return secret;
+
+  if (process.env.MCP_ALLOW_INSECURE_DEV === '1') {
+    logger.error(
+      'SECURITY WARNING: CONDUIT_S2S_SECRET is empty and MCP_ALLOW_INSECURE_DEV=1. ' +
+        'HTTP /mcp is not enforcing X-Gateway-S2S. Do not use this outside local development.',
+    );
+    return '';
+  }
+
+  logger.error(
+    'Refusing to start HTTP transport: CONDUIT_S2S_SECRET is empty. ' +
+      'Set CONDUIT_S2S_SECRET, or set MCP_ALLOW_INSECURE_DEV=1 for local development only.',
+  );
+  process.exit(1);
+}
 
 // ─── Domain Configuration ───────────────────────────────────────────────────
 
@@ -274,10 +299,11 @@ async function startStdioTransport(): Promise<void> {
 
 // ─── HTTP Streaming Transport ───────────────────────────────────────────────────
 
-async function startHttpTransport(): Promise<void> {
+export async function startHttpTransport(): Promise<HttpServer> {
   const port = parseInt(process.env.MCP_HTTP_PORT || '8080', 10);
-  const host = process.env.MCP_HTTP_HOST || '0.0.0.0';
+  const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
   const isGatewayMode = process.env.AUTH_MODE === 'gateway';
+  const s2sSecret = resolveHttpS2sSecret();
 
   const httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -301,7 +327,7 @@ async function startHttpTransport(): Promise<void> {
       // Conduit service-to-service auth (gateway#377 parity): rejected
       // BEFORE any credential extraction, mirroring every other ported
       // wrapper (e.g. containers/sentinelone-mcp/gateway_wrapper.py).
-      if (S2S_SECRET && !verifyS2sHeader(req.headers[S2S_HEADER] as string | undefined, S2S_SECRET)) {
+      if (s2sSecret && !verifyS2sHeader(req.headers[S2S_HEADER] as string | undefined, s2sSecret)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -365,16 +391,7 @@ async function startHttpTransport(): Promise<void> {
     });
   });
 
-  const shutdown = async () => {
-    logger.info('Shutting down...');
-    await new Promise<void>((resolve, reject) => {
-      httpServer.close(err => (err ? reject(err) : resolve()));
-    });
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  return httpServer;
 }
 
 // ─── Entry point ────────────────────────────────────────────────────────────────
@@ -388,16 +405,29 @@ async function main() {
   });
 
   if (transportType === 'http') {
-    await startHttpTransport();
+    const httpServer = await startHttpTransport();
+    const shutdown = async () => {
+      logger.info('Shutting down...');
+      await new Promise<void>((resolve, reject) => {
+        httpServer.close(err => (err ? reject(err) : resolve()));
+      });
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   } else {
     await startStdioTransport();
   }
 }
 
-main().catch((error) => {
-  logger.error('Fatal startup error', {
-    error: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
+// Vitest imports this module to call startHttpTransport. Skip the CLI
+// entrypoint there. `node dist/index.js` still starts stdio or HTTP.
+if (process.env.VITEST !== 'true') {
+  main().catch((error) => {
+    logger.error('Fatal startup error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    process.exit(1);
   });
-  process.exit(1);
-});
+}
