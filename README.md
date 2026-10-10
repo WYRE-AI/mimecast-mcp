@@ -27,7 +27,7 @@ Copy [`.env.example`](.env.example) and set the variables below.
 | `MCP_TRANSPORT` | No | `stdio` (default) or `http` |
 | `AUTH_MODE` | No | `gateway` (Docker image and Compose default) or `env`. Gateway mode requires `X-Mimecast-Client-ID` and `X-Mimecast-Client-Secret` on each `/mcp` request and never falls back to `MIMECAST_*`. `env` uses those variables only after S2S auth succeeds. |
 | `CONDUIT_S2S_SECRET` | Yes for HTTP | Service-to-service secret. The HTTP server logs an error and exits non-zero when this is empty. Compose will not start without it. Never commit a real value. |
-| `MCP_ALLOW_INSECURE_DEV` | No | Set to `1` only for local development to start HTTP without `CONDUIT_S2S_SECRET`. The process logs a warning and does not enforce `X-Gateway-S2S`. |
+| `MCP_ALLOW_INSECURE_DEV` | No | Set to `1` only for local development to start HTTP without `CONDUIT_S2S_SECRET`. The process logs a warning and does not enforce `X-Gateway-S2S`. Startup is refused unless `MCP_HTTP_HOST` is loopback (`127.0.0.1`, `localhost`, or `::1`). |
 | `MCP_HTTP_HOST` | No | Bind address when `MCP_TRANSPORT=http`. Defaults to `127.0.0.1`. The container image sets `0.0.0.0`. |
 | `MCP_HTTP_PORT` | No | HTTP port. Defaults to `8080`. |
 
@@ -102,7 +102,7 @@ docker run \
   mimecast-mcp
 ```
 
-Local HTTP without a secret is development-only. It binds `127.0.0.1` and logs a warning:
+Local HTTP without a secret is development-only. It binds loopback (`127.0.0.1` unless `MCP_HTTP_HOST` is `localhost` or `::1`) and logs a warning. A non-loopback `MCP_HTTP_HOST` makes startup exit:
 
 ```bash
 MCP_TRANSPORT=http MCP_ALLOW_INSECURE_DEV=1 npm run start:http

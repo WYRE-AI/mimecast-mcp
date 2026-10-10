@@ -206,10 +206,65 @@ describe('HTTP startup', () => {
       expect(text).toContain('SECURITY WARNING');
       expect(text).toContain('CONDUIT_S2S_SECRET');
       expect(text).toContain('MCP_ALLOW_INSECURE_DEV');
+      expect(text).toContain('loopback');
       expect(text).not.toContain(S2S_SECRET);
     } finally {
       logs.restore();
       await close?.();
+    }
+  });
+
+  it.each(['0.0.0.0', '10.1.2.3'])(
+    'refuses the dev bypass when MCP_HTTP_HOST is %s',
+    async (host) => {
+      process.env.MCP_ALLOW_INSECURE_DEV = '1';
+      process.env.MCP_HTTP_HOST = host;
+      const logs = captureStderr();
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+        throw new Error(`process.exit:${String(code)}`);
+      }) as typeof process.exit);
+
+      try {
+        await expect(startHttpTransport()).rejects.toThrow('process.exit:1');
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        const text = logs.text();
+        expect(text).toContain('Refusing to start HTTP transport');
+        expect(text).toContain('MCP_ALLOW_INSECURE_DEV');
+        expect(text).toContain('loopback');
+        expect(text).toContain(`MCP_HTTP_HOST=${host}`);
+        expect(text).not.toContain(S2S_SECRET);
+      } finally {
+        exitSpy.mockRestore();
+        logs.restore();
+      }
+    },
+  );
+
+  it('allows the dev bypass on localhost', async () => {
+    process.env.MCP_ALLOW_INSECURE_DEV = '1';
+    process.env.MCP_HTTP_HOST = 'localhost';
+    const logs = captureStderr();
+    let close: (() => Promise<void>) | undefined;
+    try {
+      const server = await listen();
+      close = server.close;
+      expect(['127.0.0.1', '::1']).toContain(server.address);
+      expect(logs.text()).toContain('SECURITY WARNING');
+      expect(logs.text()).toContain('loopback');
+    } finally {
+      logs.restore();
+      await close?.();
+    }
+  });
+
+  it('still binds a non-loopback host when CONDUIT_S2S_SECRET is set', async () => {
+    process.env.CONDUIT_S2S_SECRET = S2S_SECRET;
+    process.env.MCP_HTTP_HOST = '0.0.0.0';
+    const server = await listen();
+    try {
+      expect(server.address).toBe('0.0.0.0');
+    } finally {
+      await server.close();
     }
   });
 

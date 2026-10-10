@@ -25,6 +25,7 @@
  *
  * HTTP transport refuses to start unless CONDUIT_S2S_SECRET is set.
  * MCP_ALLOW_INSECURE_DEV=1 is a local-only escape hatch and logs a warning.
+ * That bypass is refused unless the listener is loopback (127.0.0.1, localhost, or ::1).
  * The listen address defaults to 127.0.0.1 unless MCP_HTTP_HOST is set.
  * /health and /healthz stay unauthenticated and do not read credentials.
  * stdio does not use S2S auth.
@@ -43,19 +44,35 @@ import { registerResourceHandlers } from './resources.js';
 import { logger } from './utils/logger.js';
 import { verifyS2sHeader, S2S_HEADER } from './s2s-verify.js';
 
+/** Hosts the insecure-dev bypass is allowed to bind. Anything else is refused. */
+function isLoopbackBindHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase().replace(/^\[(.+)\]$/, '$1');
+  return normalized === '127.0.0.1' || normalized === 'localhost' || normalized === '::1';
+}
+
 /**
  * Secret for X-Gateway-S2S on /mcp. Read at HTTP startup, not module load.
- * Empty is fail-closed: the process exits unless MCP_ALLOW_INSECURE_DEV=1.
- * The secret value is never written to logs.
+ * Empty is fail-closed: the process exits unless MCP_ALLOW_INSECURE_DEV=1
+ * and `host` is loopback. The secret value is never written to logs.
  */
-function resolveHttpS2sSecret(): string {
+function resolveHttpS2sSecret(host: string): string {
   const secret = process.env.CONDUIT_S2S_SECRET || '';
   if (secret) return secret;
 
   if (process.env.MCP_ALLOW_INSECURE_DEV === '1') {
+    if (!isLoopbackBindHost(host)) {
+      logger.error(
+        `Refusing to start HTTP transport: MCP_ALLOW_INSECURE_DEV=1 is limited to loopback ` +
+          `(127.0.0.1, localhost, or ::1). MCP_HTTP_HOST=${host} is not loopback. ` +
+          'Unset MCP_HTTP_HOST or set it to 127.0.0.1.',
+      );
+      process.exit(1);
+    }
+
     logger.error(
       'SECURITY WARNING: CONDUIT_S2S_SECRET is empty and MCP_ALLOW_INSECURE_DEV=1. ' +
-        'HTTP /mcp is not enforcing X-Gateway-S2S. Do not use this outside local development.',
+        `HTTP /mcp is not enforcing X-Gateway-S2S and is limited to loopback (${host}). ` +
+        'Do not use this outside local development.',
     );
     return '';
   }
@@ -303,7 +320,7 @@ export async function startHttpTransport(): Promise<HttpServer> {
   const port = parseInt(process.env.MCP_HTTP_PORT || '8080', 10);
   const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
   const isGatewayMode = process.env.AUTH_MODE === 'gateway';
-  const s2sSecret = resolveHttpS2sSecret();
+  const s2sSecret = resolveHttpS2sSecret(host);
 
   const httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
