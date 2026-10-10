@@ -17,14 +17,27 @@ npm install @wyre-ai/mimecast-mcp
 
 ## Configuration
 
-Set the following environment variables:
+Copy [`.env.example`](.env.example) and set the variables below.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `MIMECAST_CLIENT_ID` | Yes | Your Mimecast API client ID |
-| `MIMECAST_CLIENT_SECRET` | Yes | Your Mimecast API client secret |
-| `MIMECAST_REGION` | Yes | Tenant grid label: `us`, `eu`, `de`, `au`, `za`, `ca`, `offshore`, or `je`. API 2.0 client-credentials calls all use `https://api.services.mimecast.com`. Regional hosts such as `eu-api.mimecast.com` are API 1.0 only and do not accept this server's OAuth flow. |
-| `MCP_TRANSPORT` | No | Transport mode: stdio (default) or http |
+| `MIMECAST_CLIENT_ID` | For stdio and `AUTH_MODE=env` | Mimecast API 2.0 client ID |
+| `MIMECAST_CLIENT_SECRET` | For stdio and `AUTH_MODE=env` | Mimecast API 2.0 client secret |
+| `MIMECAST_REGION` | No | Tenant grid label: `us` (default), `eu`, `de`, `au`, `za`, `ca`, `offshore`, or `je`. API 2.0 client-credentials calls all use `https://api.services.mimecast.com`. Regional hosts such as `eu-api.mimecast.com` are API 1.0 only and do not accept this server's OAuth flow. |
+| `MCP_TRANSPORT` | No | `stdio` (default) or `http` |
+| `AUTH_MODE` | No | `gateway` (Docker image and Compose default) or `env`. Gateway mode requires `X-Mimecast-Client-ID` and `X-Mimecast-Client-Secret` on each `/mcp` request and never falls back to `MIMECAST_*`. `env` uses those variables only after S2S auth succeeds. |
+| `CONDUIT_S2S_SECRET` | Yes for HTTP | Service-to-service secret. The HTTP server logs an error and exits non-zero when this is empty. Compose will not start without it. Never commit a real value. |
+| `MCP_ALLOW_INSECURE_DEV` | No | Set to `1` only for local development to start HTTP without `CONDUIT_S2S_SECRET`. The process logs a warning and does not enforce `X-Gateway-S2S`. Startup is refused unless `MCP_HTTP_HOST` is loopback (`127.0.0.1`, `localhost`, or `::1`). |
+| `MCP_HTTP_HOST` | No | Bind address when `MCP_TRANSPORT=http`. Defaults to `127.0.0.1`. The container image sets `0.0.0.0`. |
+| `MCP_HTTP_PORT` | No | HTTP port. Defaults to `8080`. |
+
+`/health` and `/healthz` stay unauthenticated and do not read credentials. The stdio transport does not use `CONDUIT_S2S_SECRET`.
+
+### HTTP authentication
+
+With `MCP_TRANSPORT=http` and `CONDUIT_S2S_SECRET` set, every `/mcp` request must include `X-Gateway-S2S` (`t=<unix seconds>,v1=<hex hmac-sha256 of t=...>`). A missing or invalid header returns 401.
+
+In `AUTH_MODE=gateway`, `/mcp` also requires `X-Mimecast-Client-ID` and `X-Mimecast-Client-Secret` (`X-Mimecast-Region` is optional). Those headers are the only credential source for that request.
 
 ## Usage
 
@@ -60,13 +73,39 @@ claude mcp add mimecast-mcp \
 
 ### Docker
 
+The image listens on `0.0.0.0` inside the container (`MCP_HTTP_HOST`) and defaults to `AUTH_MODE=gateway`. Publish the port on loopback and pass the S2S secret. In gateway mode, Mimecast credentials arrive on each request as headers; they are not read from the environment.
+
 ```bash
 docker build -t mimecast-mcp .
 docker run \
+  -e CONDUIT_S2S_SECRET=your-s2s-secret \
+  -p 127.0.0.1:8080:8080 \
+  mimecast-mcp
+```
+
+Compose refuses to start when `CONDUIT_S2S_SECRET` is unset, defaults `AUTH_MODE` to `gateway`, and publishes `127.0.0.1:8080:8080`:
+
+```bash
+CONDUIT_S2S_SECRET=your-s2s-secret docker compose up
+```
+
+Single-tenant HTTP (`AUTH_MODE=env`) still requires the S2S secret, then uses `MIMECAST_CLIENT_ID` and `MIMECAST_CLIENT_SECRET`:
+
+```bash
+docker run \
+  -e CONDUIT_S2S_SECRET=your-s2s-secret \
+  -e AUTH_MODE=env \
   -e MIMECAST_CLIENT_ID=your-value \
   -e MIMECAST_CLIENT_SECRET=your-value \
-  -e MIMECAST_REGION=your-value \
-  -p 8080:8080 mimecast-mcp
+  -e MIMECAST_REGION=us \
+  -p 127.0.0.1:8080:8080 \
+  mimecast-mcp
+```
+
+Local HTTP without a secret is development-only. It binds loopback (`127.0.0.1` unless `MCP_HTTP_HOST` is `localhost` or `::1`) and logs a warning. A non-loopback `MCP_HTTP_HOST` makes startup exit:
+
+```bash
+MCP_TRANSPORT=http MCP_ALLOW_INSECURE_DEV=1 npm run start:http
 ```
 
 ## API application permissions

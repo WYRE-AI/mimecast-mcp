@@ -5,11 +5,12 @@ services:
       args:
         GITHUB_TOKEN: ${GITHUB_TOKEN}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - MCP_TRANSPORT=http
       - MCP_HTTP_PORT=8080
-      - AUTH_MODE=${AUTH_MODE:-env}
+      - AUTH_MODE=${AUTH_MODE:-gateway}
+      - CONDUIT_S2S_SECRET=${CONDUIT_S2S_SECRET:?set CONDUIT_S2S_SECRET}
       - MIMECAST_CLIENT_ID=${MIMECAST_CLIENT_ID}
       - MIMECAST_CLIENT_SECRET=${MIMECAST_CLIENT_SECRET}
       - MIMECAST_REGION=${MIMECAST_REGION:-us}
