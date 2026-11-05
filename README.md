@@ -125,6 +125,8 @@ Grant only the permissions each tool calls. A permissions error from `mimecast_g
 | `mimecast_get_ttp_logs` (`type=impersonation`) | Monitoring \| Impersonation Protection \| Read |
 | `mimecast_get_audit_events` | Account \| Logs \| Read |
 
+The server exposes **8** Mimecast tools, all listed above. `mimecast_navigate` and `mimecast_status` are helper tools for discovery and health checks; they call no Mimecast API and are not counted in the 8.
+
 `mimecast_get_audit_events` also requires a start and end. When the caller omits them, the server queries the last 7 days. Mimecast only keeps 60 days of audit history, and category filters must be codes such as `account_logs` or `policy_logs` (omit `categories` to search every log). Basic Administrator includes the read permissions in Mimecast's own integration guides; Threat Remediation and Held Edit are separate and must be added explicitly.
 
 ## Available Domains
