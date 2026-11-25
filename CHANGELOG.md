@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Patched HIGH/CRITICAL vulnerabilities reported by the Trivy image scan: bumped `proxy-addr`, `fast-uri`, `ip-address` and `body-parser` (transitive) in the lockfile and removed the unused bundled npm CLI from the runtime image.
+
 ### Added
 
 - **Handler-level test coverage for all domain tools.** The tool surface (registration, `_meta`, resource wiring) and credential isolation were already well tested, but the request-shaping/response-mapping logic inside each domain handler's `handleCall()` was only exercised for `mimecast_get_message_info`'s card-building path — `mimecast_find_message`, `mimecast_hold_message`, `mimecast_release_message`, `mimecast_get_queue_status`, `mimecast_get_threat_incidents`, `mimecast_get_ttp_logs` (all three `type` branches), and `mimecast_get_audit_events` were never actually invoked by a test. Added `src/__tests__/messages.handlers.test.ts`, `src/__tests__/queue.handlers.test.ts`, and `src/__tests__/threats.handlers.test.ts`, which mock `@wyre-technology/node-mimecast` and invoke every exported tool handler directly, asserting both the outbound call shape (snake_case tool args → the client's camelCase params) and the response transformation (raw API response → the tool's returned JSON), plus the non-array-response normalization, `unknown tool` branch, and error-propagation path for each.
